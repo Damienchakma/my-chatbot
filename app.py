@@ -2,107 +2,252 @@ import streamlit as st
 import requests
 import json
 from datetime import datetime
+import os
 
-# Page config
+# Page configuration
 st.set_page_config(
-    page_title="Poor Man's ChatGPT",
+    page_title="AI Chat Assistant",
     page_icon="🤖",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# CSS
+# Custom CSS - Claude-inspired design
 st.markdown("""
 <style>
-    .stApp {
-        background-color: #343541 !important;
-    }
-
-    section[data-testid="stSidebar"] {
-        background-color: #202123 !important;
-        width: 260px !important;
-    }
-
-    .chat-message {
-        padding: 15px 20px;
-        margin: 0;
-        display: flex;
-        align-items: start;
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+    
+    * {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
     }
     
-    .user { background-color: #343541; }
-    .assistant { background-color: #444654; }
+    .stApp {
+        background-color: #f5f5f5;
+    }
+    
+    section[data-testid="stSidebar"] {
+        background-color: #ffffff;
+        border-right: 1px solid #e5e5e5;
+        padding-top: 1rem;
+    }
+    
+    section[data-testid="stSidebar"] > div {
+        padding-top: 2rem;
+    }
+    
+    .main-header {
+        padding: 1.5rem 0;
+        text-align: center;
+        border-bottom: 1px solid #e5e5e5;
+        margin-bottom: 1rem;
+    }
+    
+    .chat-container {
+        max-width: 48rem;
+        margin: 0 auto;
+        padding: 2rem 1rem;
+    }
+    
+    .message-wrapper {
+        margin-bottom: 1.5rem;
+        animation: fadeIn 0.3s ease-in;
+    }
+    
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    
+    .user-message {
+        background-color: #ffffff;
+        border: 1px solid #e5e5e5;
+        border-radius: 12px;
+        padding: 1.25rem;
+        margin-left: 3rem;
+    }
+    
+    .assistant-message {
+        background-color: #ffffff;
+        border: 1px solid #e5e5e5;
+        border-radius: 12px;
+        padding: 1.25rem;
+        margin-right: 3rem;
+    }
+    
+    .message-label {
+        font-weight: 600;
+        font-size: 0.875rem;
+        color: #6b7280;
+        margin-bottom: 0.5rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
     
     .message-content {
-        color: #ECECF1 !important;
-        margin-left: 12px;
-        margin-right: 40px;
-        font-size: 15px;
-        line-height: 1.4;
+        color: #1f2937;
+        line-height: 1.6;
+        font-size: 0.9375rem;
     }
-
-    pre {
-        background-color: #1e1e1e !important;
-        border-radius: 5px;
-        padding: 10px;
-        white-space: pre-wrap;
-        color: #ECECF1 !important;
-    }
-
-    code {
-        color: #ECECF1 !important;
-    }
-
-    .input-container {
-        position: fixed;
-        bottom: 0;
-        left: 260px;
-        right: 0;
-        padding: 20px;
-        background: #343541;
-        border-top: 1px solid #565869;
-    }
-
-    .stTextInput input {
-        background-color: #40414F !important;
-        border-radius: 10px !important;
-        border: 1px solid #565869 !important;
-        padding: 12px !important;
-        color: #ECECF1 !important;
-        font-size: 16px !important;
-    }
-
-    button {
-        color: #ECECF1 !important;
-        background-color: #202123 !important;
-        border: 1px solid #4a4b53 !important;
-    }
-
-    button:hover {
-        border-color: #ECECF1 !important;
-        background-color: #2A2B32 !important;
-    }
-
-    .model-indicator {
-        position: fixed;
-        bottom: 80px;
-        left: 280px;
-        padding: 5px 10px;
-        background-color: #202123;
-        border-radius: 5px;
-        color: #ECECF1;
-        font-size: 12px;
-        z-index: 1000;
-    }
-
-    .bottom-space { height: 140px; }
     
-    .stMarkdown div { color: #ECECF1 !important; }
-
-    .feedback-buttons {
+    .stTextInput > div > div > input {
+        border-radius: 24px;
+        border: 1px solid #d1d5db;
+        padding: 0.875rem 1.25rem;
+        font-size: 0.9375rem;
+        background-color: #ffffff;
+    }
+    
+    .stTextInput > div > div > input:focus {
+        border-color: #9333ea;
+        box-shadow: 0 0 0 3px rgba(147, 51, 234, 0.1);
+    }
+    
+    .stButton > button {
+        border-radius: 8px;
+        border: 1px solid #e5e5e5;
+        background-color: #ffffff;
+        color: #374151;
+        font-weight: 500;
+        padding: 0.5rem 1rem;
+        transition: all 0.2s;
+    }
+    
+    .stButton > button:hover {
+        background-color: #f9fafb;
+        border-color: #d1d5db;
+    }
+    
+    .primary-button > button {
+        background-color: #9333ea !important;
+        color: #ffffff !important;
+        border: none !important;
+    }
+    
+    .primary-button > button:hover {
+        background-color: #7e22ce !important;
+    }
+    
+    .provider-card {
+        background: #f9fafb;
+        border: 1px solid #e5e5e5;
+        border-radius: 8px;
+        padding: 0.75rem;
+        margin-bottom: 0.5rem;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    
+    .provider-card:hover {
+        background: #f3f4f6;
+        border-color: #9333ea;
+    }
+    
+    .provider-card-active {
+        background: #ede9fe;
+        border-color: #9333ea;
+    }
+    
+    .settings-section {
+        margin-bottom: 1.5rem;
+        padding-bottom: 1.5rem;
+        border-bottom: 1px solid #e5e5e5;
+    }
+    
+    .settings-label {
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        color: #6b7280;
+        margin-bottom: 0.75rem;
+        letter-spacing: 0.05em;
+    }
+    
+    pre {
+        background-color: #1e1e1e;
+        border-radius: 6px;
+        padding: 1rem;
+        overflow-x: auto;
+    }
+    
+    code {
+        font-family: 'Courier New', monospace;
+        font-size: 0.875rem;
+    }
+    
+    .thinking-indicator {
         display: flex;
-        gap: 10px;
-        margin-top: 5px;
+        align-items: center;
+        gap: 0.5rem;
+        color: #6b7280;
+        font-size: 0.875rem;
+        padding: 0.75rem;
+    }
+    
+    .dot-flashing {
+        position: relative;
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background-color: #9333ea;
+        animation: dotFlashing 1s infinite linear;
+    }
+    
+    @keyframes dotFlashing {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.3; }
+    }
+    
+    .error-message {
+        background-color: #fef2f2;
+        border: 1px solid #fecaca;
+        border-radius: 8px;
+        padding: 1rem;
+        color: #991b1b;
+        margin: 1rem 0;
+    }
+    
+    .welcome-message {
+        text-align: center;
+        padding: 3rem 2rem;
+        color: #6b7280;
+    }
+    
+    .welcome-message h1 {
+        font-size: 2rem;
+        font-weight: 600;
+        color: #1f2937;
+        margin-bottom: 0.5rem;
+    }
+    
+    .capability-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1rem;
+        margin-top: 2rem;
+        max-width: 48rem;
+        margin-left: auto;
+        margin-right: auto;
+    }
+    
+    .capability-card {
+        background: #ffffff;
+        border: 1px solid #e5e5e5;
+        border-radius: 8px;
+        padding: 1rem;
+        text-align: center;
+    }
+    
+    .capability-card h3 {
+        font-size: 1rem;
+        font-weight: 600;
+        color: #1f2937;
+        margin-bottom: 0.25rem;
+    }
+    
+    .capability-card p {
+        font-size: 0.875rem;
+        color: #6b7280;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -112,104 +257,354 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 if "conversations" not in st.session_state:
     st.session_state.conversations = []
+if "current_provider" not in st.session_state:
+    st.session_state.current_provider = "ollama"
 if "current_model" not in st.session_state:
     st.session_state.current_model = "llama2"
-if "user_input" not in st.session_state:
-    st.session_state.user_input = ""
+if "api_keys" not in st.session_state:
+    st.session_state.api_keys = {
+        "groq": "",
+        "openai": "",
+        "anthropic": ""
+    }
+if "ollama_host" not in st.session_state:
+    st.session_state.ollama_host = "http://localhost:11434"
 
-# Models
-MODELS = {
-    "llama2": {
-        "name": "Llama 2",
+# Provider configurations
+PROVIDERS = {
+    "ollama": {
+        "name": "Ollama (Local)",
         "icon": "🦙",
-        "description": "General purpose chat model"
+        "models": ["llama2", "mistral", "codellama", "llama3.2", "qwen2.5-coder:3b"],
+        "requires_api_key": False
     },
-    "qwen2.5-coder:3b": {
-        "name": "Qwen Coder",
-        "icon": "👨‍💻",
-        "description": "Specialized in coding tasks"
+    "groq": {
+        "name": "Groq",
+        "icon": "⚡",
+        "models": ["llama-3.1-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768"],
+        "requires_api_key": True
+    },
+    "openai": {
+        "name": "OpenAI",
+        "icon": "🤖",
+        "models": ["gpt-4o", "gpt-4o-mini", "gpt-3.5-turbo"],
+        "requires_api_key": True
+    },
+    "anthropic": {
+        "name": "Anthropic",
+        "icon": "🔮",
+        "models": ["claude-3-5-sonnet-20241022", "claude-3-opus-20240229", "claude-3-haiku-20240307"],
+        "requires_api_key": True
     }
 }
 
+def call_ollama(model, messages):
+    """Call Ollama API"""
+    try:
+        # Convert messages to prompt
+        prompt = "\n".join([f"{m['role']}: {m['content']}" for m in messages])
+        
+        response = requests.post(
+            f"{st.session_state.ollama_host}/api/generate",
+            json={
+                "model": model,
+                "prompt": prompt,
+                "stream": False
+            },
+            timeout=60
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            return data.get('response', '')
+        else:
+            return f"Error: Ollama returned status code {response.status_code}"
+    except Exception as e:
+        return f"Error connecting to Ollama: {str(e)}"
+
+def call_groq(model, messages):
+    """Call Groq API"""
+    api_key = st.session_state.api_keys.get("groq", "")
+    if not api_key:
+        return "Error: Groq API key not set. Please add it in the sidebar."
+    
+    try:
+        response = requests.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": model,
+                "messages": messages,
+                "temperature": 0.7,
+                "max_tokens": 2048
+            },
+            timeout=60
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            return data['choices'][0]['message']['content']
+        else:
+            return f"Error: Groq API returned status code {response.status_code}"
+    except Exception as e:
+        return f"Error calling Groq API: {str(e)}"
+
+def call_openai(model, messages):
+    """Call OpenAI API"""
+    api_key = st.session_state.api_keys.get("openai", "")
+    if not api_key:
+        return "Error: OpenAI API key not set. Please add it in the sidebar."
+    
+    try:
+        response = requests.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": model,
+                "messages": messages,
+                "temperature": 0.7
+            },
+            timeout=60
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            return data['choices'][0]['message']['content']
+        else:
+            return f"Error: OpenAI API returned status code {response.status_code}"
+    except Exception as e:
+        return f"Error calling OpenAI API: {str(e)}"
+
+def call_anthropic(model, messages):
+    """Call Anthropic API"""
+    api_key = st.session_state.api_keys.get("anthropic", "")
+    if not api_key:
+        return "Error: Anthropic API key not set. Please add it in the sidebar."
+    
+    try:
+        # Convert messages format for Anthropic
+        formatted_messages = []
+        for msg in messages:
+            formatted_messages.append({
+                "role": msg["role"],
+                "content": msg["content"]
+            })
+        
+        response = requests.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": api_key,
+                "anthropic-version": "2023-06-01",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": model,
+                "messages": formatted_messages,
+                "max_tokens": 2048
+            },
+            timeout=60
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            return data['content'][0]['text']
+        else:
+            return f"Error: Anthropic API returned status code {response.status_code}"
+    except Exception as e:
+        return f"Error calling Anthropic API: {str(e)}"
+
+def get_ai_response(provider, model, messages):
+    """Route to appropriate API based on provider"""
+    if provider == "ollama":
+        return call_ollama(model, messages)
+    elif provider == "groq":
+        return call_groq(model, messages)
+    elif provider == "openai":
+        return call_openai(model, messages)
+    elif provider == "anthropic":
+        return call_anthropic(model, messages)
+    else:
+        return "Error: Unknown provider"
+
 # Sidebar
 with st.sidebar:
-    if st.button("+ New chat"):
+    st.markdown("### AI Provider")
+    
+    # Provider selection
+    for provider_id, provider_info in PROVIDERS.items():
+        is_active = provider_id == st.session_state.current_provider
+        if st.button(
+            f"{provider_info['icon']} {provider_info['name']}",
+            key=f"provider_{provider_id}",
+            use_container_width=True
+        ):
+            st.session_state.current_provider = provider_id
+            st.session_state.current_model = provider_info['models'][0]
+            st.rerun()
+    
+    st.markdown("---")
+    
+    # Model selection
+    current_provider_info = PROVIDERS[st.session_state.current_provider]
+    st.markdown("### Model")
+    st.session_state.current_model = st.selectbox(
+        "Select model",
+        current_provider_info['models'],
+        index=0 if st.session_state.current_model not in current_provider_info['models'] 
+              else current_provider_info['models'].index(st.session_state.current_model),
+        label_visibility="collapsed"
+    )
+    
+    st.markdown("---")
+    
+    # API Keys section
+    st.markdown("### API Configuration")
+    
+    if st.session_state.current_provider == "ollama":
+        st.session_state.ollama_host = st.text_input(
+            "Ollama Host",
+            value=st.session_state.ollama_host,
+            placeholder="http://localhost:11434"
+        )
+    
+    if current_provider_info['requires_api_key']:
+        api_key = st.text_input(
+            f"{current_provider_info['name']} API Key",
+            value=st.session_state.api_keys.get(st.session_state.current_provider, ""),
+            type="password",
+            placeholder="Enter your API key..."
+        )
+        if api_key:
+            st.session_state.api_keys[st.session_state.current_provider] = api_key
+    
+    st.markdown("---")
+    
+    # Chat management
+    if st.button("🗨️ New Chat", use_container_width=True):
+        if len(st.session_state.messages) > 0:
+            # Save current conversation
+            title = st.session_state.messages[0]['content'][:40] if st.session_state.messages else "New Chat"
+            st.session_state.conversations.append({
+                "title": title,
+                "messages": st.session_state.messages.copy(),
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M")
+            })
         st.session_state.messages = []
         st.rerun()
-
-    st.markdown("### Model")
-    for model_id, model_info in MODELS.items():
-        button_style = "background-color: #2A2B32;" if model_id == st.session_state.current_model else ""
-        if st.button(
-            f"{model_info['icon']} {model_info['name']}",
-            key=f"model_{model_id}",
-            help=model_info['description']
-        ):
-            st.session_state.current_model = model_id
-            st.rerun()
-
+    
+    # Conversation history
     if st.session_state.conversations:
-        st.markdown("### History")
-        for idx, conv in enumerate(st.session_state.conversations):
-            title = conv.get('title', f'Chat {idx + 1}')
-            if st.button(f"💬 {title[:30]}...", key=f"conv_{idx}"):
-                st.session_state.messages = conv['messages']
-                st.rerun()
-
-# Show current model indicator
-current_model = MODELS[st.session_state.current_model]
-st.markdown(f"""
-<div class="model-indicator">
-    {current_model['icon']} Using {current_model['name']}
-</div>
-""", unsafe_allow_html=True)
-
-# Main chat
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
-        if message["role"] == "assistant":
-            col1, col2 = st.columns([1, 20])
+        st.markdown("### Chat History")
+        for idx, conv in enumerate(reversed(st.session_state.conversations[-10:])):
+            actual_idx = len(st.session_state.conversations) - idx - 1
+            col1, col2 = st.columns([5, 1])
             with col1:
-                st.button("👍", key=f"good_{len(st.session_state.messages)}")
-                st.button("👎", key=f"bad_{len(st.session_state.messages)}")
+                if st.button(
+                    f"💬 {conv['title'][:25]}...",
+                    key=f"conv_{actual_idx}",
+                    use_container_width=True
+                ):
+                    st.session_state.messages = conv['messages'].copy()
+                    st.rerun()
+            with col2:
+                if st.button("🗑️", key=f"del_{actual_idx}"):
+                    st.session_state.conversations.pop(actual_idx)
+                    st.rerun()
+
+# Main content area
+st.markdown('<div class="chat-container">', unsafe_allow_html=True)
+
+# Welcome screen
+if not st.session_state.messages:
+    st.markdown("""
+    <div class="welcome-message">
+        <h1>How can I help you today?</h1>
+        <p>Choose a provider and model from the sidebar to get started</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown('<div class="capability-grid">', unsafe_allow_html=True)
+    capabilities = [
+        {"icon": "💬", "title": "Natural Conversation", "desc": "Chat naturally about any topic"},
+        {"icon": "💻", "title": "Code Assistant", "desc": "Write and debug code"},
+        {"icon": "📝", "title": "Writing Help", "desc": "Create and edit content"},
+        {"icon": "🧠", "title": "Analysis", "desc": "Analyze data and solve problems"}
+    ]
+    
+    cols = st.columns(len(capabilities))
+    for col, cap in zip(cols, capabilities):
+        with col:
+            st.markdown(f"""
+            <div class="capability-card">
+                <div style="font-size: 2rem; margin-bottom: 0.5rem;">{cap['icon']}</div>
+                <h3>{cap['title']}</h3>
+                <p>{cap['desc']}</p>
+            </div>
+            """, unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# Display chat messages
+for idx, message in enumerate(st.session_state.messages):
+    role = message["role"]
+    content = message["content"]
+    
+    if role == "user":
+        st.markdown(f"""
+        <div class="message-wrapper">
+            <div class="user-message">
+                <div class="message-label">
+                    <span>👤</span>
+                    <span>You</span>
+                </div>
+                <div class="message-content">{content}</div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        provider_icon = PROVIDERS[st.session_state.current_provider]['icon']
+        st.markdown(f"""
+        <div class="message-wrapper">
+            <div class="assistant-message">
+                <div class="message-label">
+                    <span>{provider_icon}</span>
+                    <span>Assistant</span>
+                </div>
+                <div class="message-content">{content}</div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+st.markdown('</div>', unsafe_allow_html=True)
 
 # Chat input
-if prompt := st.chat_input("Message...", key="chat_input"):
-    # Prevent message repetition
-    if not st.session_state.messages or prompt != st.session_state.messages[-1].get('content', ''):
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        
-        try:
-            response = requests.post(
-                "http://localhost:11434/api/generate",
-                json={
-                    "model": st.session_state.current_model,
-                    "prompt": prompt,
-                    "stream": False
-                }
-            )
-            
-            if response.status_code == 200:
-                response_data = json.loads(response.text.strip().split('\n')[0])
-                if 'response' in response_data:
-                    st.session_state.messages.append({
-                        "role": "assistant",
-                        "content": response_data['response']
-                    })
-                    
-                    # Save new conversations
-                    if len(st.session_state.messages) == 2:
-                        st.session_state.conversations.append({
-                            "title": prompt[:30],
-                            "messages": st.session_state.messages.copy()
-                        })
-                    
-                    # Clear input and rerun
-                    st.session_state.user_input = ""
-                    st.rerun()
+prompt = st.chat_input("Type your message here...", key="chat_input")
+
+if prompt:
+    # Add user message
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    
+    # Show thinking indicator
+    with st.spinner("Thinking..."):
+        # Get AI response
+        response = get_ai_response(
+            st.session_state.current_provider,
+            st.session_state.current_model,
+            st.session_state.messages
+        )
+    
+    # Add assistant response
+    st.session_state.messages.append({"role": "assistant", "content": response})
+    
+    st.rerun()
         except Exception as e:
             st.error(f"Error: {str(e)}")
 
 # Bottom spacing
+
 st.markdown('<div class="bottom-space"></div>', unsafe_allow_html=True)
