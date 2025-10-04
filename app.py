@@ -207,6 +207,16 @@ st.markdown("""
         margin: 1rem 0;
     }
     
+    .success-message {
+        background-color: #f0fdf4;
+        border: 1px solid #86efac;
+        border-radius: 8px;
+        padding: 0.75rem;
+        color: #15803d;
+        font-size: 0.875rem;
+        margin: 0.5rem 0;
+    }
+    
     .welcome-message {
         text-align: center;
         padding: 3rem 2rem;
@@ -260,7 +270,7 @@ if "conversations" not in st.session_state:
 if "current_provider" not in st.session_state:
     st.session_state.current_provider = "ollama"
 if "current_model" not in st.session_state:
-    st.session_state.current_model = "llama2"
+    st.session_state.current_model = ""
 if "api_keys" not in st.session_state:
     st.session_state.api_keys = {
         "groq": "",
@@ -269,13 +279,17 @@ if "api_keys" not in st.session_state:
     }
 if "ollama_host" not in st.session_state:
     st.session_state.ollama_host = "http://localhost:11434"
+if "ollama_models" not in st.session_state:
+    st.session_state.ollama_models = []
+if "ollama_connected" not in st.session_state:
+    st.session_state.ollama_connected = False
 
 # Provider configurations
 PROVIDERS = {
     "ollama": {
         "name": "Ollama (Local)",
         "icon": "🦙",
-        "models": ["llama2", "mistral", "codellama", "llama3.2", "qwen2.5-coder:3b"],
+        "models": [],  # Will be populated dynamically
         "requires_api_key": False
     },
     "groq": {
@@ -297,6 +311,32 @@ PROVIDERS = {
         "requires_api_key": True
     }
 }
+
+def fetch_ollama_models():
+    """Fetch available models from Ollama"""
+    try:
+        response = requests.get(
+            f"{st.session_state.ollama_host}/api/tags",
+            timeout=5
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            models = [model['name'] for model in data.get('models', [])]
+            st.session_state.ollama_models = models
+            st.session_state.ollama_connected = True
+            
+            # Set default model if not set
+            if not st.session_state.current_model and models:
+                st.session_state.current_model = models[0]
+            
+            return models
+        else:
+            st.session_state.ollama_connected = False
+            return []
+    except Exception as e:
+        st.session_state.ollama_connected = False
+        return []
 
 def call_ollama(model, messages):
     """Call Ollama API"""
@@ -445,21 +485,59 @@ with st.sidebar:
             use_container_width=True
         ):
             st.session_state.current_provider = provider_id
-            st.session_state.current_model = provider_info['models'][0]
+            if provider_id == "ollama":
+                # Fetch models when switching to Ollama
+                models = fetch_ollama_models()
+                if models:
+                    st.session_state.current_model = models[0]
+            else:
+                st.session_state.current_model = provider_info['models'][0]
             st.rerun()
     
     st.markdown("---")
     
     # Model selection
     current_provider_info = PROVIDERS[st.session_state.current_provider]
-    st.markdown("### Model")
-    st.session_state.current_model = st.selectbox(
-        "Select model",
-        current_provider_info['models'],
-        index=0 if st.session_state.current_model not in current_provider_info['models'] 
-              else current_provider_info['models'].index(st.session_state.current_model),
-        label_visibility="collapsed"
-    )
+    
+    # For Ollama, fetch models dynamically
+    if st.session_state.current_provider == "ollama":
+        col1, col2 = st.columns([4, 1])
+        with col1:
+            st.markdown("### Model")
+        with col2:
+            if st.button("🔄", key="refresh_models", help="Refresh model list"):
+                fetch_ollama_models()
+                st.rerun()
+        
+        available_models = st.session_state.ollama_models
+        
+        if not available_models:
+            # Try to fetch models
+            available_models = fetch_ollama_models()
+        
+        if available_models:
+            if st.session_state.ollama_connected:
+                st.markdown(f'<div class="success-message">✓ Connected - {len(available_models)} models found</div>', unsafe_allow_html=True)
+            
+            st.session_state.current_model = st.selectbox(
+                "Select model",
+                available_models,
+                index=0 if st.session_state.current_model not in available_models 
+                      else available_models.index(st.session_state.current_model),
+                label_visibility="collapsed"
+            )
+        else:
+            st.error("⚠️ No Ollama models found. Make sure Ollama is running.")
+            st.info("Install models with: `ollama pull llama2`")
+    else:
+        st.markdown("### Model")
+        st.session_state.current_model = st.selectbox(
+            "Select model",
+            current_provider_info['models'],
+            index=0 if st.session_state.current_model not in current_provider_info['models'] 
+                  else current_provider_info['models'].index(st.session_state.current_model),
+            label_visibility="collapsed"
+        )
     
     st.markdown("---")
     
@@ -467,11 +545,16 @@ with st.sidebar:
     st.markdown("### API Configuration")
     
     if st.session_state.current_provider == "ollama":
-        st.session_state.ollama_host = st.text_input(
+        new_host = st.text_input(
             "Ollama Host",
             value=st.session_state.ollama_host,
             placeholder="http://localhost:11434"
         )
+        if new_host != st.session_state.ollama_host:
+            st.session_state.ollama_host = new_host
+            # Re-fetch models when host changes
+            fetch_ollama_models()
+            st.rerun()
     
     if current_provider_info['requires_api_key']:
         api_key = st.text_input(
@@ -586,25 +669,23 @@ st.markdown('</div>', unsafe_allow_html=True)
 prompt = st.chat_input("Type your message here...", key="chat_input")
 
 if prompt:
-    # Add user message
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    
-    # Show thinking indicator
-    with st.spinner("Thinking..."):
-        # Get AI response
-        response = get_ai_response(
-            st.session_state.current_provider,
-            st.session_state.current_model,
-            st.session_state.messages
-        )
-    
-    # Add assistant response
-    st.session_state.messages.append({"role": "assistant", "content": response})
-    
-    st.rerun()
-        except Exception as e:
-            st.error(f"Error: {str(e)}")
-
-# Bottom spacing
-
-st.markdown('<div class="bottom-space"></div>', unsafe_allow_html=True)
+    # Check if model is selected
+    if not st.session_state.current_model:
+        st.error("Please select a model from the sidebar first!")
+    else:
+        # Add user message
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        
+        # Show thinking indicator
+        with st.spinner("Thinking..."):
+            # Get AI response
+            response = get_ai_response(
+                st.session_state.current_provider,
+                st.session_state.current_model,
+                st.session_state.messages
+            )
+        
+        # Add assistant response
+        st.session_state.messages.append({"role": "assistant", "content": response})
+        
+        st.rerun()
