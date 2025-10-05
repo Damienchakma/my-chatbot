@@ -1,6 +1,6 @@
 """
 Standalone AI Chat Desktop Application - Claude-like UI
-Install requirements: pip install PyQt6 requests markdown2
+Install requirements: pip install PyQt6 requests
 Run: python desktop_chat_app.py
 """
 
@@ -14,9 +14,9 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QTextEdit, QPushButton, QLabel, 
                              QComboBox, QLineEdit, QListWidget, QSplitter,
                              QTabWidget, QSlider, QFileDialog, QMessageBox,
-                             QScrollArea, QFrame, QTextBrowser)
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QSize
-from PyQt6.QtGui import QFont, QTextCursor, QPalette, QColor, QTextCharFormat, QBrush
+                             QScrollArea, QFrame, QTextBrowser, QListWidgetItem)
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
+from PyQt6.QtGui import QFont
 
 # Database setup
 DB_PATH = "chat_history.db"
@@ -87,18 +87,12 @@ PROVIDERS = {
 }
 
 # Reasoning models that support thinking
-REASONING_MODELS = [
-    "deepseek-r1",
-    "o1-preview",
-    "o1-mini",
-    "o1",
-    "qwq"
-]
+REASONING_MODELS = ["deepseek-r1", "o1-preview", "o1-mini", "o1", "qwq"]
 
 # API worker thread with streaming support
 class APIWorker(QThread):
-    chunk_received = pyqtSignal(str)  # For streaming
-    thinking_chunk = pyqtSignal(str)  # For reasoning models
+    chunk_received = pyqtSignal(str)
+    thinking_chunk = pyqtSignal(str)
     finished = pyqtSignal(str, int, int)
     error = pyqtSignal(str)
     
@@ -125,7 +119,6 @@ class APIWorker(QThread):
                 self.call_anthropic_streaming()
             else:
                 raise Exception("Unknown provider")
-            
         except Exception as e:
             self.error.emit(str(e))
     
@@ -134,7 +127,6 @@ class APIWorker(QThread):
     
     def call_ollama_streaming(self):
         prompt = "\n".join([f"{m['role']}: {m['content']}" for m in self.messages])
-        
         response = requests.post(
             f"{self.settings['ollama_host']}/api/generate",
             json={
@@ -157,7 +149,6 @@ class APIWorker(QThread):
                 if chunk:
                     self.full_response += chunk
                     self.chunk_received.emit(chunk)
-                
                 if data.get('done', False):
                     break
         
@@ -249,8 +240,6 @@ class APIWorker(QThread):
             timeout=120
         )
         
-        in_thinking = False
-        
         for line in response.iter_lines():
             if line:
                 line = line.decode('utf-8')
@@ -262,19 +251,13 @@ class APIWorker(QThread):
                         data = json.loads(line)
                         choice = data['choices'][0]
                         
-                        # Check for reasoning models
                         if self.is_reasoning_model() and 'delta' in choice:
                             delta = choice['delta']
-                            
-                            # Handle thinking content
                             if 'reasoning_content' in delta:
                                 thinking = delta['reasoning_content']
                                 if thinking:
                                     self.thinking_content += thinking
                                     self.thinking_chunk.emit(thinking)
-                                    in_thinking = True
-                            
-                            # Handle regular content
                             if 'content' in delta:
                                 chunk = delta['content']
                                 if chunk:
@@ -334,14 +317,12 @@ class MessageWidget(QFrame):
         self.content = content
         self.provider_icon = provider_icon
         self.thinking_content = ""
-        
         self.setup_ui()
     
     def setup_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 15)
         
-        # Message container
         container = QFrame()
         container_layout = QVBoxLayout(container)
         container_layout.setContentsMargins(20, 15, 20, 15)
@@ -355,7 +336,7 @@ class MessageWidget(QFrame):
                     border-radius: 16px;
                 }
             """)
-            layout.setContentsMargins(50, 0, 0, 0)  # Indent from left
+            layout.setContentsMargins(50, 0, 0, 0)
         else:
             container.setStyleSheet("""
                 QFrame {
@@ -365,24 +346,18 @@ class MessageWidget(QFrame):
                     border-radius: 16px;
                 }
             """)
-            layout.setContentsMargins(0, 0, 50, 0)  # Indent from right
+            layout.setContentsMargins(0, 0, 50, 0)
         
-        # Header
         header = QLabel()
         if self.role == "user":
             header.setText("👤 You")
         else:
             header.setText(f"{self.provider_icon} Assistant")
         
-        header.setStyleSheet("""
-            color: #93c5fd;
-            font-weight: 600;
-            font-size: 13px;
-            margin-bottom: 8px;
-        """)
+        header.setStyleSheet("color: #93c5fd; font-weight: 600; font-size: 13px; margin-bottom: 8px;")
         container_layout.addWidget(header)
         
-        # Thinking bubble (for reasoning models)
+        # Thinking bubble
         self.thinking_widget = QFrame()
         thinking_layout = QVBoxLayout(self.thinking_widget)
         thinking_layout.setContentsMargins(15, 12, 15, 12)
@@ -396,12 +371,7 @@ class MessageWidget(QFrame):
         """)
         
         thinking_header = QLabel("💭 Thinking...")
-        thinking_header.setStyleSheet("""
-            color: #60a5fa;
-            font-weight: 600;
-            font-size: 12px;
-            margin-bottom: 6px;
-        """)
+        thinking_header.setStyleSheet("color: #60a5fa; font-weight: 600; font-size: 12px; margin-bottom: 6px;")
         thinking_layout.addWidget(thinking_header)
         
         self.thinking_text = QTextBrowser()
@@ -412,7 +382,6 @@ class MessageWidget(QFrame):
                 border: none;
                 color: #93c5fd;
                 font-size: 13px;
-                line-height: 1.6;
             }
         """)
         self.thinking_text.setMaximumHeight(200)
@@ -430,7 +399,6 @@ class MessageWidget(QFrame):
                 border: none;
                 color: #f3f4f6;
                 font-size: 14px;
-                line-height: 1.7;
             }
         """)
         
@@ -438,12 +406,10 @@ class MessageWidget(QFrame):
             self.set_content(self.content)
         
         container_layout.addWidget(self.content_text)
-        
         layout.addWidget(container)
     
     def set_content(self, content):
         self.content = content
-        # Convert markdown-like formatting to HTML
         html_content = self.format_content(content)
         self.content_text.setHtml(html_content)
         self.adjust_height()
@@ -454,12 +420,6 @@ class MessageWidget(QFrame):
         self.content_text.setHtml(html_content)
         self.adjust_height()
     
-    def set_thinking(self, thinking):
-        self.thinking_content = thinking
-        self.thinking_widget.show()
-        html_thinking = self.format_content(thinking)
-        self.thinking_text.setHtml(html_thinking)
-    
     def append_thinking(self, chunk):
         self.thinking_content += chunk
         self.thinking_widget.show()
@@ -467,27 +427,17 @@ class MessageWidget(QFrame):
         self.thinking_text.setHtml(html_thinking)
     
     def format_content(self, text):
-        # Simple markdown-like formatting
-        html = text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-        
-        # Code blocks
         import re
+        html = text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
         html = re.sub(r'```(\w+)?\n(.*?)```', 
-                     r'<pre style="background-color: #1e1e1e; padding: 12px; border-radius: 6px; overflow-x: auto; margin: 10px 0;"><code>\2</code></pre>', 
+                     r'<pre style="background-color: #1e1e1e; padding: 12px; border-radius: 6px; margin: 10px 0;"><code>\2</code></pre>', 
                      html, flags=re.DOTALL)
-        
-        # Inline code
         html = re.sub(r'`([^`]+)`', 
                      r'<code style="background-color: #374151; padding: 2px 6px; border-radius: 4px; font-family: monospace;">\1</code>', 
                      html)
-        
-        # Bold
         html = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', html)
-        
-        # Line breaks
         html = html.replace('\n', '<br>')
-        
-        return f'<div style="font-family: Inter, sans-serif;">{html}</div>'
+        return f'<div style="font-family: Inter, sans-serif; line-height: 1.7;">{html}</div>'
     
     def adjust_height(self):
         doc_height = self.content_text.document().size().height()
@@ -502,16 +452,13 @@ class ChatWindow(QMainWindow):
         
         init_database()
         
-        # State
         self.messages = []
         self.current_conversation_id = None
         self.current_provider = "ollama"
         self.current_model = ""
-        self.provider_models = {}
         self.uploaded_files = []
         self.current_message_widget = None
         
-        # Settings
         self.settings = {
             "ollama_host": "http://localhost:11434",
             "lmstudio_host": "http://localhost:1234",
@@ -535,12 +482,9 @@ class ChatWindow(QMainWindow):
         main_layout.setSpacing(0)
         
         splitter = QSplitter(Qt.Orientation.Horizontal)
-        
-        # Sidebar
         sidebar = self.create_sidebar()
         splitter.addWidget(sidebar)
         
-        # Main content
         main_content = self.create_main_content()
         splitter.addWidget(main_content)
         
@@ -558,23 +502,19 @@ class ChatWindow(QMainWindow):
         layout.setContentsMargins(15, 20, 15, 20)
         layout.setSpacing(15)
         
-        # Title
         title = QLabel("⚙️ Settings")
         title.setFont(QFont("Inter", 14, QFont.Weight.Bold))
         layout.addWidget(title)
         
-        # New chat
         self.new_chat_btn = QPushButton("🗨️ New Chat")
         self.new_chat_btn.clicked.connect(self.new_chat)
         layout.addWidget(self.new_chat_btn)
         
-        # Provider selection
         layout.addSpacing(5)
         provider_label = QLabel("AI Provider")
         provider_label.setFont(QFont("Inter", 11, QFont.Weight.Bold))
         layout.addWidget(provider_label)
         
-        # Provider buttons
         for provider_id, info in PROVIDERS.items():
             btn = QPushButton(f"{info['icon']} {info['name']}")
             btn.setCheckable(True)
@@ -584,7 +524,6 @@ class ChatWindow(QMainWindow):
             layout.addWidget(btn)
             setattr(self, f"provider_btn_{provider_id}", btn)
         
-        # Model selection
         layout.addSpacing(5)
         model_header = QHBoxLayout()
         model_label = QLabel("Model")
@@ -596,7 +535,6 @@ class ChatWindow(QMainWindow):
         self.refresh_btn.setMaximumWidth(35)
         self.refresh_btn.clicked.connect(self.fetch_models)
         model_header.addWidget(self.refresh_btn)
-        
         layout.addLayout(model_header)
         
         self.model_combo = QComboBox()
@@ -606,11 +544,9 @@ class ChatWindow(QMainWindow):
         self.model_status = QLabel()
         layout.addWidget(self.model_status)
         
-        # Settings tabs
         layout.addSpacing(5)
         self.settings_tab = QTabWidget()
         
-        # API tab
         api_widget = QWidget()
         api_layout = QVBoxLayout(api_widget)
         api_layout.setContentsMargins(10, 10, 10, 10)
@@ -632,7 +568,6 @@ class ChatWindow(QMainWindow):
         
         api_layout.addStretch()
         
-        # Model settings tab
         params_widget = QWidget()
         params_layout = QVBoxLayout(params_widget)
         params_layout.setContentsMargins(10, 10, 10, 10)
@@ -662,10 +597,8 @@ class ChatWindow(QMainWindow):
         
         self.settings_tab.addTab(api_widget, "API")
         self.settings_tab.addTab(params_widget, "Parameters")
-        
         layout.addWidget(self.settings_tab)
         
-        # File upload
         layout.addSpacing(5)
         file_label = QLabel("📁 Upload Files")
         file_label.setFont(QFont("Inter", 11, QFont.Weight.Bold))
@@ -678,7 +611,6 @@ class ChatWindow(QMainWindow):
         self.file_status = QLabel()
         layout.addWidget(self.file_status)
         
-        # History
         layout.addSpacing(5)
         history_label = QLabel("💬 Chat History")
         history_label.setFont(QFont("Inter", 11, QFont.Weight.Bold))
@@ -689,9 +621,7 @@ class ChatWindow(QMainWindow):
         layout.addWidget(self.history_list)
         
         self.load_history()
-        
         layout.addStretch()
-        
         self.update_api_visibility()
         
         return sidebar
@@ -702,7 +632,6 @@ class ChatWindow(QMainWindow):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         
-        # Chat area with scroll
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -715,22 +644,20 @@ class ChatWindow(QMainWindow):
         self.chat_layout.addStretch()
         
         scroll.setWidget(self.chat_container)
+        self.scroll_area = scroll
         layout.addWidget(scroll)
         
-        # Input area
         input_container = QFrame()
         input_container.setStyleSheet("""
             QFrame {
                 background-color: #1a1a2e;
                 border-top: 1px solid #374151;
-                padding: 20px;
             }
         """)
         
         input_layout = QVBoxLayout(input_container)
         input_layout.setContentsMargins(40, 20, 40, 20)
         
-        # Input wrapper for centering
         input_wrapper = QHBoxLayout()
         
         self.message_input = QTextEdit()
@@ -756,33 +683,10 @@ class ChatWindow(QMainWindow):
         self.send_btn = QPushButton("Send")
         self.send_btn.setMinimumHeight(60)
         self.send_btn.setMinimumWidth(100)
-        self.send_btn.setStyleSheet("""
-            QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 #3b82f6, stop:1 #2563eb);
-                color: white;
-                border: none;
-                border-radius: 12px;
-                font-size: 14px;
-                font-weight: 600;
-                font-family: Inter, sans-serif;
-            }
-            QPushButton:hover {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 #2563eb, stop:1 #1d4ed8);
-            }
-            QPushButton:pressed {
-                background: #1e40af;
-            }
-            QPushButton:disabled {
-                background: #475569;
-            }
-        """)
         self.send_btn.clicked.connect(self.send_message)
         input_wrapper.addWidget(self.send_btn)
         
         input_layout.addLayout(input_wrapper)
-        
         layout.addWidget(input_container)
         
         self.display_welcome_message()
@@ -812,4 +716,423 @@ class ChatWindow(QMainWindow):
                 font-family: Inter, sans-serif;
             }
             QPushButton:hover {
-                background: qlineargradient(x1:0, y1:0, x2:1, y
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #2563eb, stop:1 #1d4ed8);
+            }
+            QPushButton:pressed {
+                background: #1e40af;
+            }
+            QPushButton:checked {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #1e40af, stop:1 #1e3a8a);
+            }
+            QPushButton:disabled {
+                background: #475569;
+                color: #9ca3af;
+            }
+            QLineEdit, QComboBox {
+                background-color: #1e293b;
+                color: #f3f4f6;
+                border: 1px solid #475569;
+                border-radius: 6px;
+                padding: 8px 12px;
+                font-size: 13px;
+                font-family: Inter, sans-serif;
+            }
+            QLabel {
+                color: #e4e4e7;
+                font-size: 13px;
+                font-family: Inter, sans-serif;
+            }
+            QListWidget {
+                background-color: #1e293b;
+                color: #f3f4f6;
+                border: 1px solid #475569;
+                border-radius: 8px;
+                padding: 4px;
+                font-family: Inter, sans-serif;
+            }
+            QListWidget::item {
+                padding: 10px;
+                border-radius: 6px;
+                margin: 2px;
+            }
+            QListWidget::item:hover {
+                background-color: #334155;
+            }
+            QListWidget::item:selected {
+                background-color: #3b82f6;
+            }
+            QTabWidget::pane {
+                border: 1px solid #475569;
+                border-radius: 6px;
+                background-color: #1e293b;
+            }
+            QTabBar::tab {
+                background-color: #334155;
+                color: #9ca3af;
+                padding: 8px 16px;
+                border-top-left-radius: 6px;
+                border-top-right-radius: 6px;
+                margin-right: 2px;
+                font-family: Inter, sans-serif;
+            }
+            QTabBar::tab:selected {
+                background-color: #3b82f6;
+                color: white;
+            }
+            QSlider::groove:horizontal {
+                height: 6px;
+                background: #334155;
+                border-radius: 3px;
+            }
+            QSlider::handle:horizontal {
+                background: #3b82f6;
+                width: 16px;
+                margin: -5px 0;
+                border-radius: 8px;
+            }
+            QScrollBar:vertical {
+                background: #1e293b;
+                width: 10px;
+                border-radius: 5px;
+            }
+            QScrollBar::handle:vertical {
+                background: #475569;
+                border-radius: 5px;
+            }
+        """)
+    
+    def select_provider(self, provider_id):
+        self.current_provider = provider_id
+        for pid in PROVIDERS.keys():
+            btn = getattr(self, f"provider_btn_{pid}")
+            btn.setChecked(pid == provider_id)
+        self.update_api_visibility()
+        self.fetch_models()
+    
+    def update_api_visibility(self):
+        provider_info = PROVIDERS[self.current_provider]
+        if provider_info["requires_api_key"]:
+            self.host_label.hide()
+            self.host_input.hide()
+            self.api_key_label.show()
+            self.api_key_input.show()
+            key_name = f"{self.current_provider}_api_key"
+            self.api_key_input.setText(self.settings.get(key_name, ""))
+        else:
+            self.host_label.show()
+            self.host_input.show()
+            self.api_key_label.hide()
+            self.api_key_input.hide()
+            host_name = f"{self.current_provider}_host"
+            self.host_input.setText(self.settings.get(host_name, ""))
+    
+    def fetch_models(self):
+        self.model_combo.clear()
+        self.model_status.setText("Loading...")
+        self.model_status.setStyleSheet("color: #f59e0b;")
+        QTimer.singleShot(100, self._fetch_models_async)
+    
+    def _fetch_models_async(self):
+        try:
+            models = []
+            
+            if self.current_provider == "ollama":
+                response = requests.get(f"{self.settings['ollama_host']}/api/tags", timeout=5)
+                if response.status_code == 200:
+                    models = [m['name'] for m in response.json().get('models', [])]
+            
+            elif self.current_provider == "lmstudio":
+                response = requests.get(f"{self.settings['lmstudio_host']}/v1/models", timeout=5)
+                if response.status_code == 200:
+                    models = [m['id'] for m in response.json().get('data', [])]
+            
+            elif self.current_provider == "groq":
+                api_key = self.settings.get('groq_api_key', '')
+                if api_key:
+                    response = requests.get(
+                        "https://api.groq.com/openai/v1/models",
+                        headers={"Authorization": f"Bearer {api_key}"},
+                        timeout=10
+                    )
+                    if response.status_code == 200:
+                        models = sorted([m['id'] for m in response.json().get('data', [])])
+            
+            elif self.current_provider == "openai":
+                api_key = self.settings.get('openai_api_key', '')
+                if api_key:
+                    response = requests.get(
+                        "https://api.openai.com/v1/models",
+                        headers={"Authorization": f"Bearer {api_key}"},
+                        timeout=10
+                    )
+                    if response.status_code == 200:
+                        all_models = [m['id'] for m in response.json().get('data', [])]
+                        models = sorted([m for m in all_models if 'gpt' in m.lower()], reverse=True)
+            
+            elif self.current_provider == "anthropic":
+                models = [
+                    "claude-sonnet-4-5-20250929",
+                    "claude-3-5-sonnet-20241022",
+                    "claude-3-5-haiku-20241022",
+                    "claude-3-opus-20240229",
+                    "claude-3-haiku-20240307"
+                ]
+            
+            if models:
+                self.model_combo.addItems(models)
+                self.current_model = models[0]
+                self.model_status.setText(f"✓ {len(models)} models")
+                self.model_status.setStyleSheet("color: #10b981;")
+            else:
+                self.model_status.setText("⚠️ No models")
+                self.model_status.setStyleSheet("color: #f59e0b;")
+        
+        except Exception as e:
+            self.model_status.setText("❌ Error")
+            self.model_status.setStyleSheet("color: #ef4444;")
+    
+    def on_model_changed(self, model):
+        self.current_model = model
+    
+    def update_host(self, text):
+        self.settings[f"{self.current_provider}_host"] = text
+    
+    def update_api_key(self, text):
+        self.settings[f"{self.current_provider}_api_key"] = text
+    
+    def update_temperature(self, value):
+        temp = value / 100.0
+        self.settings['temperature'] = temp
+        self.temp_label.setText(f"Temperature: {temp:.2f}")
+    
+    def update_max_tokens(self, value):
+        self.settings['max_tokens'] = value
+        self.tokens_label.setText(f"Max Tokens: {value}")
+    
+    def upload_file(self):
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Open File", "", "Text Files (*.txt *.md *.json);;All Files (*)"
+        )
+        if file_path:
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content = f.read()[:5000]
+                    self.uploaded_files.append({"name": Path(file_path).name, "content": content})
+                    self.file_status.setText(f"✓ {Path(file_path).name}")
+                    self.file_status.setStyleSheet("color: #10b981;")
+            except Exception as e:
+                QMessageBox.warning(self, "Error", f"Failed to read file: {str(e)}")
+    
+    def new_chat(self):
+        if self.messages:
+            reply = QMessageBox.question(
+                self, "New Chat", "Start a new chat? Current chat will be saved.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.No:
+                return
+        
+        self.messages = []
+        self.current_conversation_id = None
+        self.uploaded_files = []
+        self.file_status.clear()
+        
+        while self.chat_layout.count() > 1:
+            item = self.chat_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        
+        self.display_welcome_message()
+    
+    def display_welcome_message(self):
+        welcome = QLabel()
+        welcome.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        welcome.setText("""
+            <div style='text-align: center; padding: 80px 40px;'>
+                <h1 style='color: #60a5fa; font-size: 36px; margin-bottom: 20px; font-weight: 700;'>
+                    How can I help you today?
+                </h1>
+                <p style='color: #9ca3af; font-size: 16px;'>
+                    Choose a provider and model to get started
+                </p>
+            </div>
+        """)
+        self.chat_layout.insertWidget(self.chat_layout.count() - 1, welcome)
+    
+    def send_message(self):
+        message = self.message_input.toPlainText().strip()
+        if not message or not self.current_model:
+            if not self.current_model:
+                QMessageBox.warning(self, "No Model", "Please select a model first!")
+            return
+        
+        if self.chat_layout.count() > 1:
+            first_item = self.chat_layout.itemAt(0)
+            if first_item and first_item.widget() and isinstance(first_item.widget(), QLabel):
+                first_item.widget().deleteLater()
+        
+        self.message_input.clear()
+        
+        if not self.current_conversation_id:
+            self.current_conversation_id = self.save_conversation(
+                message[:50], self.current_provider, self.current_model
+            )
+        
+        context = ""
+        if self.uploaded_files:
+            context = "\n\n[Context from files]:\n"
+            for file in self.uploaded_files:
+                context += f"\n--- {file['name']} ---\n{file['content']}\n"
+        
+        full_message = context + message if context else message
+        
+        self.messages.append({"role": "user", "content": message})
+        self.save_message(self.current_conversation_id, "user", message)
+        
+        user_widget = MessageWidget("user", message)
+        self.chat_layout.insertWidget(self.chat_layout.count() - 1, user_widget)
+        
+        provider_icon = PROVIDERS[self.current_provider]['icon']
+        assistant_widget = MessageWidget("assistant", "", provider_icon)
+        self.chat_layout.insertWidget(self.chat_layout.count() - 1, assistant_widget)
+        self.current_message_widget = assistant_widget
+        
+        QTimer.singleShot(100, self.scroll_to_bottom)
+        
+        self.send_btn.setEnabled(False)
+        self.send_btn.setText("Thinking...")
+        
+        api_messages = self.messages.copy()
+        if context:
+            api_messages[-1] = {"role": "user", "content": full_message}
+        
+        self.worker = APIWorker(self.current_provider, self.current_model, api_messages, self.settings)
+        self.worker.chunk_received.connect(self.on_chunk_received)
+        self.worker.thinking_chunk.connect(self.on_thinking_chunk)
+        self.worker.finished.connect(self.on_response_finished)
+        self.worker.error.connect(self.on_response_error)
+        self.worker.start()
+    
+    def on_chunk_received(self, chunk):
+        if self.current_message_widget:
+            self.current_message_widget.append_content(chunk)
+            QTimer.singleShot(50, self.scroll_to_bottom)
+    
+    def on_thinking_chunk(self, chunk):
+        if self.current_message_widget:
+            self.current_message_widget.append_thinking(chunk)
+            QTimer.singleShot(50, self.scroll_to_bottom)
+    
+    def on_response_finished(self, full_response, input_tokens, output_tokens):
+        self.messages.append({"role": "assistant", "content": full_response})
+        self.save_message(self.current_conversation_id, "assistant", full_response)
+        
+        cost = (input_tokens / 1000) * 0.001 + (output_tokens / 1000) * 0.002
+        self.save_usage_stats(self.current_conversation_id, self.current_provider,
+                             self.current_model, input_tokens, output_tokens, cost)
+        
+        self.send_btn.setEnabled(True)
+        self.send_btn.setText("Send")
+        self.current_message_widget = None
+        self.load_history()
+    
+    def on_response_error(self, error):
+        QMessageBox.critical(self, "Error", f"Failed to get response:\n{error}")
+        self.send_btn.setEnabled(True)
+        self.send_btn.setText("Send")
+        if self.current_message_widget:
+            self.current_message_widget.deleteLater()
+            self.current_message_widget = None
+    
+    def scroll_to_bottom(self):
+        if hasattr(self, 'scroll_area'):
+            scroll_bar = self.scroll_area.verticalScrollBar()
+            scroll_bar.setValue(scroll_bar.maximum())
+    
+    def save_conversation(self, title, provider, model):
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        now = datetime.now()
+        c.execute('''INSERT INTO conversations (title, provider, model, created_at, updated_at)
+                     VALUES (?, ?, ?, ?, ?)''', (title, provider, model, now, now))
+        conv_id = c.lastrowid
+        conn.commit()
+        conn.close()
+        return conv_id
+    
+    def save_message(self, conversation_id, role, content):
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute('''INSERT INTO messages (conversation_id, role, content, timestamp)
+                     VALUES (?, ?, ?, ?)''', (conversation_id, role, content, datetime.now()))
+        conn.commit()
+        conn.close()
+    
+    def save_usage_stats(self, conversation_id, provider, model, input_tokens, output_tokens, cost):
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute('''INSERT INTO usage_stats (conversation_id, provider, model, input_tokens, 
+                     output_tokens, estimated_cost, timestamp)
+                     VALUES (?, ?, ?, ?, ?, ?, ?)''',
+                  (conversation_id, provider, model, input_tokens, output_tokens, cost, datetime.now()))
+        conn.commit()
+        conn.close()
+    
+    def load_history(self):
+        self.history_list.clear()
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute('''SELECT id, title, provider, created_at FROM conversations 
+                     ORDER BY updated_at DESC LIMIT 20''')
+        conversations = c.fetchall()
+        conn.close()
+        
+        for conv in conversations:
+            conv_id, title, provider, created = conv
+            item = QListWidgetItem(f"💬 {title[:30]}...")
+            item.setData(Qt.ItemDataRole.UserRole, conv_id)
+            self.history_list.addItem(item)
+    
+    def load_conversation(self, item):
+        conv_id = item.data(Qt.ItemDataRole.UserRole)
+        
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute('''SELECT role, content FROM messages 
+                     WHERE conversation_id = ? ORDER BY timestamp''', (conv_id,))
+        messages = [{"role": row[0], "content": row[1]} for row in c.fetchall()]
+        conn.close()
+        
+        self.messages = messages
+        self.current_conversation_id = conv_id
+        
+        while self.chat_layout.count() > 1:
+            item = self.chat_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        
+        provider_icon = PROVIDERS[self.current_provider]['icon']
+        for msg in messages:
+            if msg["role"] == "user":
+                widget = MessageWidget("user", msg["content"])
+            else:
+                widget = MessageWidget("assistant", msg["content"], provider_icon)
+            self.chat_layout.insertWidget(self.chat_layout.count() - 1, widget)
+        
+        QTimer.singleShot(100, self.scroll_to_bottom)
+
+def main():
+    app = QApplication(sys.argv)
+    app.setStyle('Fusion')
+    font = QFont("Inter", 10)
+    app.setFont(font)
+    
+    window = ChatWindow()
+    window.show()
+    
+    sys.exit(app.exec())
+
+if __name__ == "__main__":
+    main()
