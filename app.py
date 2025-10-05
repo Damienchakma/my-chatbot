@@ -2,11 +2,8 @@ import streamlit as st
 import requests
 import json
 from datetime import datetime
-import os
 import sqlite3
 from pathlib import Path
-import base64
-import io
 
 # Page configuration
 st.set_page_config(
@@ -24,7 +21,6 @@ def init_database():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     
-    # Conversations table
     c.execute('''CREATE TABLE IF NOT EXISTS conversations
                  (id INTEGER PRIMARY KEY AUTOINCREMENT,
                   title TEXT,
@@ -33,7 +29,6 @@ def init_database():
                   created_at TIMESTAMP,
                   updated_at TIMESTAMP)''')
     
-    # Messages table
     c.execute('''CREATE TABLE IF NOT EXISTS messages
                  (id INTEGER PRIMARY KEY AUTOINCREMENT,
                   conversation_id INTEGER,
@@ -42,7 +37,6 @@ def init_database():
                   timestamp TIMESTAMP,
                   FOREIGN KEY (conversation_id) REFERENCES conversations(id))''')
     
-    # Usage statistics table
     c.execute('''CREATE TABLE IF NOT EXISTS usage_stats
                  (id INTEGER PRIMARY KEY AUTOINCREMENT,
                   conversation_id INTEGER,
@@ -57,7 +51,6 @@ def init_database():
     conn.commit()
     conn.close()
 
-# Initialize database on startup
 init_database()
 
 # Initialize session state
@@ -77,12 +70,10 @@ if "api_keys" not in st.session_state:
     }
 if "ollama_host" not in st.session_state:
     st.session_state.ollama_host = "http://localhost:11434"
-if "ollama_models" not in st.session_state:
-    st.session_state.ollama_models = []
-if "ollama_connected" not in st.session_state:
-    st.session_state.ollama_connected = False
-if "theme" not in st.session_state:
-    st.session_state.theme = "light"
+if "lmstudio_host" not in st.session_state:
+    st.session_state.lmstudio_host = "http://localhost:1234"
+if "provider_models" not in st.session_state:
+    st.session_state.provider_models = {}
 if "temperature" not in st.session_state:
     st.session_state.temperature = 0.7
 if "max_tokens" not in st.session_state:
@@ -91,440 +82,376 @@ if "show_settings" not in st.session_state:
     st.session_state.show_settings = False
 if "uploaded_files" not in st.session_state:
     st.session_state.uploaded_files = []
-if "total_tokens_used" not in st.session_state:
-    st.session_state.total_tokens_used = 0
-if "total_cost" not in st.session_state:
-    st.session_state.total_cost = 0.0
 
-# Theme CSS
+# Enhanced dark mode CSS
 def get_theme_css():
-    if st.session_state.theme == "dark":
-        return """
-        <style>
-            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
-            
-            * {
-                font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-            }
-            
-            .stApp {
-                background-color: #1a1a1a;
-            }
-            
-            section[data-testid="stSidebar"] {
-                background-color: #2d2d2d;
-                border-right: 1px solid #404040;
-                padding-top: 1rem;
-            }
-            
-            .user-message {
-                background-color: #2d2d2d;
-                border: 1px solid #404040;
-                border-radius: 12px;
-                padding: 1.25rem;
-                margin-left: 3rem;
-            }
-            
-            .assistant-message {
-                background-color: #252525;
-                border: 1px solid #404040;
-                border-radius: 12px;
-                padding: 1.25rem;
-                margin-right: 3rem;
-            }
-            
-            .message-label {
-                font-weight: 600;
-                font-size: 0.875rem;
-                color: #a0a0a0;
-                margin-bottom: 0.5rem;
-                display: flex;
-                align-items: center;
-                gap: 0.5rem;
-            }
-            
-            .message-content {
-                color: #e5e5e5;
-                line-height: 1.6;
-                font-size: 0.9375rem;
-            }
-            
-            .capability-card {
-                background: #2d2d2d;
-                border: 1px solid #404040;
-                border-radius: 8px;
-                padding: 1rem;
-                text-align: center;
-            }
-            
-            .capability-card h3 {
-                color: #e5e5e5;
-            }
-            
-            .capability-card p {
-                color: #a0a0a0;
-            }
-            
-            .welcome-message h1 {
-                color: #e5e5e5;
-            }
-            
-            .stTextInput > div > div > input {
-                background-color: #2d2d2d;
-                color: #e5e5e5;
-                border: 1px solid #404040;
-            }
-            
-            .stSelectbox > div > div {
-                background-color: #2d2d2d;
-                color: #e5e5e5;
-            }
-        </style>
-        """
-    else:
-        return """
-        <style>
-            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
-            
-            * {
-                font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-            }
-            
-            .stApp {
-                background-color: #f5f5f5;
-            }
-            
-            section[data-testid="stSidebar"] {
-                background-color: #ffffff;
-                border-right: 1px solid #e5e5e5;
-                padding-top: 1rem;
-            }
-            
-            .user-message {
-                background-color: #ffffff;
-                border: 1px solid #e5e5e5;
-                border-radius: 12px;
-                padding: 1.25rem;
-                margin-left: 3rem;
-            }
-            
-            .assistant-message {
-                background-color: #ffffff;
-                border: 1px solid #e5e5e5;
-                border-radius: 12px;
-                padding: 1.25rem;
-                margin-right: 3rem;
-            }
-            
-            .message-label {
-                font-weight: 600;
-                font-size: 0.875rem;
-                color: #6b7280;
-                margin-bottom: 0.5rem;
-                display: flex;
-                align-items: center;
-                gap: 0.5rem;
-            }
-            
-            .message-content {
-                color: #1f2937;
-                line-height: 1.6;
-                font-size: 0.9375rem;
-            }
-            
-            .capability-card {
-                background: #ffffff;
-                border: 1px solid #e5e5e5;
-                border-radius: 8px;
-                padding: 1rem;
-                text-align: center;
-            }
-            
-            .capability-card h3 {
-                color: #1f2937;
-            }
-            
-            .capability-card p {
-                color: #6b7280;
-            }
-            
-            .welcome-message h1 {
-                color: #1f2937;
-            }
-        </style>
-        """
+    return """
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+        
+        * {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+        
+        .stApp {
+            background: linear-gradient(135deg, #0f0f1e 0%, #1a1a2e 100%);
+        }
+        
+        section[data-testid="stSidebar"] {
+            background: linear-gradient(180deg, #16213e 0%, #0f3460 100%);
+            border-right: 1px solid #1e3a5f;
+        }
+        
+        section[data-testid="stSidebar"] * {
+            color: #e4e4e7 !important;
+        }
+        
+        .user-message {
+            background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%);
+            border: 1px solid #3b82f6;
+            border-radius: 16px;
+            padding: 1.25rem;
+            margin: 1rem 0 1rem 3rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+        
+        .assistant-message {
+            background: linear-gradient(135deg, #1f2937 0%, #374151 100%);
+            border: 1px solid #4b5563;
+            border-radius: 16px;
+            padding: 1.25rem;
+            margin: 1rem 3rem 1rem 0;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+        
+        .message-label {
+            font-weight: 600;
+            font-size: 0.875rem;
+            color: #93c5fd;
+            margin-bottom: 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .message-content {
+            color: #f3f4f6;
+            line-height: 1.7;
+            font-size: 0.9375rem;
+        }
+        
+        .welcome-message {
+            text-align: center;
+            padding: 3rem 2rem;
+        }
+        
+        .welcome-message h1 {
+            background: linear-gradient(135deg, #60a5fa 0%, #a78bfa 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+        }
+        
+        .welcome-message p {
+            color: #9ca3af;
+            font-size: 1.125rem;
+        }
+        
+        .capability-card {
+            background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+            border: 1px solid #475569;
+            border-radius: 12px;
+            padding: 1.5rem;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+        
+        .capability-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.5);
+            border-color: #60a5fa;
+        }
+        
+        .capability-card h3 {
+            color: #f3f4f6;
+            font-size: 1.125rem;
+            margin: 0.5rem 0;
+        }
+        
+        .capability-card p {
+            color: #9ca3af;
+            font-size: 0.875rem;
+        }
+        
+        .stButton > button {
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 0.625rem 1.25rem;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+        
+        .stButton > button:hover {
+            background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+            transform: translateY(-2px);
+        }
+        
+        .stTextInput > div > div > input,
+        .stSelectbox > div > div,
+        .stTextArea > div > div > textarea {
+            background-color: #1e293b !important;
+            color: #f3f4f6 !important;
+            border: 1px solid #475569 !important;
+            border-radius: 8px;
+        }
+        
+        .stTextInput > div > div > input:focus,
+        .stSelectbox > div > div:focus,
+        .stTextArea > div > div > textarea:focus {
+            border-color: #3b82f6 !important;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2) !important;
+        }
+        
+        .success-message {
+            background: linear-gradient(135deg, #065f46 0%, #047857 100%);
+            border: 1px solid #10b981;
+            border-radius: 8px;
+            padding: 0.75rem;
+            color: #d1fae5;
+            font-size: 0.875rem;
+            margin: 0.5rem 0;
+        }
+        
+        div[data-testid="stExpander"] {
+            background-color: #1e293b;
+            border: 1px solid #475569;
+            border-radius: 8px;
+        }
+        
+        .stMetric {
+            background-color: #1e293b;
+            padding: 1rem;
+            border-radius: 8px;
+            border: 1px solid #475569;
+        }
+        
+        code {
+            background-color: #0f172a !important;
+            color: #e2e8f0 !important;
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+        }
+        
+        pre {
+            background-color: #0f172a !important;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            padding: 1rem;
+        }
+    </style>
+    """
 
-# Common CSS
 st.markdown(get_theme_css(), unsafe_allow_html=True)
-st.markdown("""
-<style>
-    .message-wrapper {
-        margin-bottom: 1.5rem;
-        animation: fadeIn 0.3s ease-in;
-    }
-    
-    @keyframes fadeIn {
-        from { opacity: 0; transform: translateY(10px); }
-        to { opacity: 1; transform: translateY(0); }
-    }
-    
-    .chat-container {
-        max-width: 48rem;
-        margin: 0 auto;
-        padding: 2rem 1rem;
-    }
-    
-    .stats-card {
-        padding: 1rem;
-        border-radius: 8px;
-        margin-bottom: 0.5rem;
-    }
-    
-    .success-message {
-        background-color: #f0fdf4;
-        border: 1px solid #86efac;
-        border-radius: 8px;
-        padding: 0.75rem;
-        color: #15803d;
-        font-size: 0.875rem;
-        margin: 0.5rem 0;
-    }
-    
-    .welcome-message {
-        text-align: center;
-        padding: 3rem 2rem;
-        color: #6b7280;
-    }
-    
-    .welcome-message h1 {
-        font-size: 2rem;
-        font-weight: 600;
-        margin-bottom: 0.5rem;
-    }
-    
-    .capability-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-        gap: 1rem;
-        margin-top: 2rem;
-        max-width: 48rem;
-        margin-left: auto;
-        margin-right: auto;
-    }
-    
-    .stButton > button {
-        border-radius: 8px;
-        border: 1px solid #e5e5e5;
-        background-color: #ffffff;
-        color: #374151;
-        font-weight: 500;
-        padding: 0.5rem 1rem;
-        transition: all 0.2s;
-    }
-    
-    pre {
-        background-color: #1e1e1e;
-        border-radius: 6px;
-        padding: 1rem;
-        overflow-x: auto;
-    }
-    
-    code {
-        font-family: 'Courier New', monospace;
-        font-size: 0.875rem;
-        color: #e5e5e5;
-    }
-</style>
-""", unsafe_allow_html=True)
 
 # Provider configurations
 PROVIDERS = {
     "ollama": {
         "name": "Ollama (Local)",
         "icon": "🦙",
-        "models": [],
         "requires_api_key": False,
-        "cost_per_1k_input": 0.0,
-        "cost_per_1k_output": 0.0
+        "fetch_models_func": "fetch_ollama_models"
+    },
+    "lmstudio": {
+        "name": "LM Studio (Local)",
+        "icon": "🎯",
+        "requires_api_key": False,
+        "fetch_models_func": "fetch_lmstudio_models"
     },
     "groq": {
         "name": "Groq",
         "icon": "⚡",
-        "models": ["llama-3.1-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768"],
         "requires_api_key": True,
-        "cost_per_1k_input": 0.0,
-        "cost_per_1k_output": 0.0
+        "fetch_models_func": "fetch_groq_models"
     },
     "openai": {
         "name": "OpenAI",
         "icon": "🤖",
-        "models": ["gpt-4o", "gpt-4o-mini", "gpt-3.5-turbo"],
         "requires_api_key": True,
-        "cost_per_1k_input": 0.005,
-        "cost_per_1k_output": 0.015
+        "fetch_models_func": "fetch_openai_models"
     },
     "anthropic": {
         "name": "Anthropic",
         "icon": "🔮",
-        "models": ["claude-3-5-sonnet-20241022", "claude-3-opus-20240229", "claude-3-haiku-20240307"],
         "requires_api_key": True,
-        "cost_per_1k_input": 0.003,
-        "cost_per_1k_output": 0.015
+        "fetch_models_func": "fetch_anthropic_models"
     }
 }
 
+# Dynamic model fetching functions
+def fetch_ollama_models():
+    """Fetch available models from Ollama"""
+    try:
+        response = requests.get(f"{st.session_state.ollama_host}/api/tags", timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            return [model['name'] for model in data.get('models', [])]
+        return []
+    except:
+        return []
+
+def fetch_lmstudio_models():
+    """Fetch available models from LM Studio"""
+    try:
+        response = requests.get(f"{st.session_state.lmstudio_host}/v1/models", timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            return [model['id'] for model in data.get('data', [])]
+        return []
+    except:
+        return []
+
+def fetch_groq_models():
+    """Fetch available models from Groq"""
+    api_key = st.session_state.api_keys.get("groq", "")
+    if not api_key:
+        return []
+    try:
+        response = requests.get(
+            "https://api.groq.com/openai/v1/models",
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=10
+        )
+        if response.status_code == 200:
+            data = response.json()
+            return sorted([model['id'] for model in data.get('data', [])])
+        return []
+    except:
+        return []
+
+def fetch_openai_models():
+    """Fetch available models from OpenAI"""
+    api_key = st.session_state.api_keys.get("openai", "")
+    if not api_key:
+        return []
+    try:
+        response = requests.get(
+            "https://api.openai.com/v1/models",
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=10
+        )
+        if response.status_code == 200:
+            data = response.json()
+            # Filter for chat models
+            models = [m['id'] for m in data.get('data', []) if 'gpt' in m['id'].lower()]
+            return sorted(models, reverse=True)
+        return []
+    except:
+        return []
+
+def fetch_anthropic_models():
+    """Return Anthropic models (API doesn't provide model list endpoint)"""
+    return [
+        "claude-sonnet-4-5-20250929",
+        "claude-3-5-sonnet-20241022",
+        "claude-3-5-haiku-20241022",
+        "claude-3-opus-20240229",
+        "claude-3-haiku-20240307"
+    ]
+
+def fetch_models_for_provider(provider):
+    """Fetch models for a specific provider"""
+    func_name = PROVIDERS[provider].get("fetch_models_func")
+    if func_name:
+        return globals()[func_name]()
+    return []
+
 # Database functions
 def save_conversation_to_db(title, provider, model):
-    """Save conversation to database"""
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    
     now = datetime.now()
     c.execute('''INSERT INTO conversations (title, provider, model, created_at, updated_at)
                  VALUES (?, ?, ?, ?, ?)''', (title, provider, model, now, now))
-    
     conv_id = c.lastrowid
     conn.commit()
     conn.close()
     return conv_id
 
 def save_message_to_db(conversation_id, role, content):
-    """Save message to database"""
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    
     c.execute('''INSERT INTO messages (conversation_id, role, content, timestamp)
                  VALUES (?, ?, ?, ?)''', (conversation_id, role, content, datetime.now()))
-    
     conn.commit()
     conn.close()
 
 def save_usage_stats(conversation_id, provider, model, input_tokens, output_tokens, cost):
-    """Save usage statistics"""
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    
     c.execute('''INSERT INTO usage_stats (conversation_id, provider, model, input_tokens, output_tokens, estimated_cost, timestamp)
                  VALUES (?, ?, ?, ?, ?, ?, ?)''', 
               (conversation_id, provider, model, input_tokens, output_tokens, cost, datetime.now()))
-    
     conn.commit()
     conn.close()
 
 def load_conversations_from_db():
-    """Load all conversations from database"""
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    
     c.execute('''SELECT id, title, provider, model, created_at FROM conversations 
                  ORDER BY updated_at DESC LIMIT 20''')
-    
     conversations = c.fetchall()
     conn.close()
     return conversations
 
 def load_messages_from_db(conversation_id):
-    """Load messages for a conversation"""
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    
     c.execute('''SELECT role, content FROM messages 
                  WHERE conversation_id = ? ORDER BY timestamp''', (conversation_id,))
-    
     messages = [{"role": row[0], "content": row[1]} for row in c.fetchall()]
     conn.close()
     return messages
 
 def get_usage_statistics():
-    """Get usage statistics"""
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    
     c.execute('''SELECT provider, model, SUM(input_tokens), SUM(output_tokens), SUM(estimated_cost)
                  FROM usage_stats GROUP BY provider, model''')
-    
     stats = c.fetchall()
-    
     c.execute('''SELECT SUM(input_tokens), SUM(output_tokens), SUM(estimated_cost) FROM usage_stats''')
     total_stats = c.fetchone()
-    
     conn.close()
     return stats, total_stats
 
 def delete_conversation_from_db(conversation_id):
-    """Delete conversation and its messages"""
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    
     c.execute('DELETE FROM messages WHERE conversation_id = ?', (conversation_id,))
     c.execute('DELETE FROM usage_stats WHERE conversation_id = ?', (conversation_id,))
     c.execute('DELETE FROM conversations WHERE id = ?', (conversation_id,))
-    
     conn.commit()
     conn.close()
 
 def export_chat_as_json(messages):
-    """Export chat as JSON"""
-    data = {
-        "exported_at": datetime.now().isoformat(),
-        "messages": messages
-    }
+    data = {"exported_at": datetime.now().isoformat(), "messages": messages}
     return json.dumps(data, indent=2)
 
 def export_chat_as_markdown(messages):
-    """Export chat as Markdown"""
-    md = f"# Chat Export\n\n"
-    md += f"Exported: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
-    md += "---\n\n"
-    
+    md = f"# Chat Export\n\nExported: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n---\n\n"
     for msg in messages:
         role = "**You:**" if msg["role"] == "user" else "**Assistant:**"
         md += f"{role}\n\n{msg['content']}\n\n---\n\n"
-    
     return md
 
-# API Functions
-def fetch_ollama_models():
-    """Fetch available models from Ollama"""
-    try:
-        response = requests.get(
-            f"{st.session_state.ollama_host}/api/tags",
-            timeout=5
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            models = [model['name'] for model in data.get('models', [])]
-            st.session_state.ollama_models = models
-            st.session_state.ollama_connected = True
-            
-            if not st.session_state.current_model and models:
-                st.session_state.current_model = models[0]
-            
-            return models
-        else:
-            st.session_state.ollama_connected = False
-            return []
-    except Exception as e:
-        st.session_state.ollama_connected = False
-        return []
-
-def estimate_tokens(text):
-    """Rough estimation of tokens (1 token ≈ 4 characters)"""
-    return len(text) // 4
-
-def calculate_cost(provider, input_tokens, output_tokens):
-    """Calculate estimated cost"""
-    provider_info = PROVIDERS.get(provider, {})
-    input_cost = (input_tokens / 1000) * provider_info.get("cost_per_1k_input", 0)
-    output_cost = (output_tokens / 1000) * provider_info.get("cost_per_1k_output", 0)
-    return input_cost + output_cost
-
+# API call functions
 def call_ollama(model, messages):
-    """Call Ollama API"""
     try:
         prompt = "\n".join([f"{m['role']}: {m['content']}" for m in messages])
-        
         response = requests.post(
             f"{st.session_state.ollama_host}/api/generate",
             json={
@@ -538,95 +465,91 @@ def call_ollama(model, messages):
             },
             timeout=120
         )
-        
         if response.status_code == 200:
-            data = response.json()
-            return data.get('response', ''), 0, 0
-        else:
-            return f"Error: Ollama returned status code {response.status_code}", 0, 0
+            return response.json().get('response', ''), 0, 0
+        return f"Error: {response.status_code}", 0, 0
     except Exception as e:
-        return f"Error connecting to Ollama: {str(e)}", 0, 0
+        return f"Error: {str(e)}", 0, 0
 
-def call_groq(model, messages):
-    """Call Groq API"""
-    api_key = st.session_state.api_keys.get("groq", "")
-    if not api_key:
-        return "Error: Groq API key not set. Please add it in the sidebar.", 0, 0
-    
+def call_lmstudio(model, messages):
     try:
         response = requests.post(
-            "https://api.groq.com/openai/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json"
-            },
+            f"{st.session_state.lmstudio_host}/v1/chat/completions",
             json={
                 "model": model,
                 "messages": messages,
                 "temperature": st.session_state.temperature,
                 "max_tokens": st.session_state.max_tokens
             },
-            timeout=60
+            timeout=120
         )
-        
-        if response.status_code == 200:
-            data = response.json()
-            usage = data.get('usage', {})
-            return (data['choices'][0]['message']['content'], 
-                   usage.get('prompt_tokens', 0),
-                   usage.get('completion_tokens', 0))
-        else:
-            return f"Error: Groq API returned status code {response.status_code}", 0, 0
-    except Exception as e:
-        return f"Error calling Groq API: {str(e)}", 0, 0
-
-def call_openai(model, messages):
-    """Call OpenAI API"""
-    api_key = st.session_state.api_keys.get("openai", "")
-    if not api_key:
-        return "Error: OpenAI API key not set.", 0, 0
-    
-    try:
-        response = requests.post(
-            "https://api.openai.com/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json"
-            },
-            json={
-                "model": model,
-                "messages": messages,
-                "temperature": st.session_state.temperature,
-                "max_tokens": st.session_state.max_tokens
-            },
-            timeout=60
-        )
-        
         if response.status_code == 200:
             data = response.json()
             usage = data.get('usage', {})
             return (data['choices'][0]['message']['content'],
                    usage.get('prompt_tokens', 0),
                    usage.get('completion_tokens', 0))
-        else:
-            return f"Error: OpenAI API returned status code {response.status_code}", 0, 0
+        return f"Error: {response.status_code}", 0, 0
     except Exception as e:
-        return f"Error calling OpenAI API: {str(e)}", 0, 0
+        return f"Error: {str(e)}", 0, 0
+
+def call_groq(model, messages):
+    api_key = st.session_state.api_keys.get("groq", "")
+    if not api_key:
+        return "Error: Groq API key not set", 0, 0
+    try:
+        response = requests.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={
+                "model": model,
+                "messages": messages,
+                "temperature": st.session_state.temperature,
+                "max_tokens": st.session_state.max_tokens
+            },
+            timeout=60
+        )
+        if response.status_code == 200:
+            data = response.json()
+            usage = data.get('usage', {})
+            return (data['choices'][0]['message']['content'],
+                   usage.get('prompt_tokens', 0),
+                   usage.get('completion_tokens', 0))
+        return f"Error: {response.status_code}", 0, 0
+    except Exception as e:
+        return f"Error: {str(e)}", 0, 0
+
+def call_openai(model, messages):
+    api_key = st.session_state.api_keys.get("openai", "")
+    if not api_key:
+        return "Error: OpenAI API key not set", 0, 0
+    try:
+        response = requests.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={
+                "model": model,
+                "messages": messages,
+                "temperature": st.session_state.temperature,
+                "max_tokens": st.session_state.max_tokens
+            },
+            timeout=60
+        )
+        if response.status_code == 200:
+            data = response.json()
+            usage = data.get('usage', {})
+            return (data['choices'][0]['message']['content'],
+                   usage.get('prompt_tokens', 0),
+                   usage.get('completion_tokens', 0))
+        return f"Error: {response.status_code}", 0, 0
+    except Exception as e:
+        return f"Error: {str(e)}", 0, 0
 
 def call_anthropic(model, messages):
-    """Call Anthropic API"""
     api_key = st.session_state.api_keys.get("anthropic", "")
     if not api_key:
-        return "Error: Anthropic API key not set.", 0, 0
-    
+        return "Error: Anthropic API key not set", 0, 0
     try:
-        formatted_messages = []
-        for msg in messages:
-            formatted_messages.append({
-                "role": msg["role"],
-                "content": msg["content"]
-            })
-        
         response = requests.post(
             "https://api.anthropic.com/v1/messages",
             headers={
@@ -636,286 +559,199 @@ def call_anthropic(model, messages):
             },
             json={
                 "model": model,
-                "messages": formatted_messages,
+                "messages": messages,
                 "max_tokens": st.session_state.max_tokens,
                 "temperature": st.session_state.temperature
             },
             timeout=60
         )
-        
         if response.status_code == 200:
             data = response.json()
             usage = data.get('usage', {})
             return (data['content'][0]['text'],
                    usage.get('input_tokens', 0),
                    usage.get('output_tokens', 0))
-        else:
-            return f"Error: Anthropic API returned status code {response.status_code}", 0, 0
+        return f"Error: {response.status_code}", 0, 0
     except Exception as e:
-        return f"Error calling Anthropic API: {str(e)}", 0, 0
+        return f"Error: {str(e)}", 0, 0
 
 def get_ai_response(provider, model, messages):
-    """Route to appropriate API"""
     if provider == "ollama":
         return call_ollama(model, messages)
+    elif provider == "lmstudio":
+        return call_lmstudio(model, messages)
     elif provider == "groq":
         return call_groq(model, messages)
     elif provider == "openai":
         return call_openai(model, messages)
     elif provider == "anthropic":
         return call_anthropic(model, messages)
-    else:
-        return "Error: Unknown provider", 0, 0
+    return "Error: Unknown provider", 0, 0
 
 # Sidebar
 with st.sidebar:
-    # Theme toggle
-    col1, col2 = st.columns([4, 1])
-    with col1:
-        st.markdown("### Settings")
-    with col2:
-        if st.button("🌓", help="Toggle theme"):
-            st.session_state.theme = "dark" if st.session_state.theme == "light" else "light"
-            st.rerun()
+    st.markdown("### ⚙️ Settings")
     
-    # Advanced settings toggle
-    if st.button("⚙️ Advanced Settings" if not st.session_state.show_settings else "⚙️ Hide Settings", 
+    if st.button("🔧 Advanced" if not st.session_state.show_settings else "🔧 Hide", 
                  use_container_width=True):
         st.session_state.show_settings = not st.session_state.show_settings
         st.rerun()
     
     if st.session_state.show_settings:
-        st.markdown("#### Model Parameters")
-        st.session_state.temperature = st.slider(
-            "Temperature",
-            min_value=0.0,
-            max_value=2.0,
-            value=st.session_state.temperature,
-            step=0.1,
-            help="Higher values make output more random"
-        )
-        
-        st.session_state.max_tokens = st.slider(
-            "Max Tokens",
-            min_value=256,
-            max_value=4096,
-            value=st.session_state.max_tokens,
-            step=256,
-            help="Maximum length of response"
-        )
+        st.session_state.temperature = st.slider("Temperature", 0.0, 2.0, st.session_state.temperature, 0.1)
+        st.session_state.max_tokens = st.slider("Max Tokens", 256, 4096, st.session_state.max_tokens, 256)
     
     st.markdown("---")
-    
-    # Provider selection
-    st.markdown("### AI Provider")
+    st.markdown("### 🤖 AI Provider")
     
     for provider_id, provider_info in PROVIDERS.items():
-        if st.button(
-            f"{provider_info['icon']} {provider_info['name']}",
-            key=f"provider_{provider_id}",
-            use_container_width=True
-        ):
+        if st.button(f"{provider_info['icon']} {provider_info['name']}", 
+                    key=f"provider_{provider_id}", use_container_width=True):
             st.session_state.current_provider = provider_id
-            if provider_id == "ollama":
-                models = fetch_ollama_models()
-                if models:
-                    st.session_state.current_model = models[0]
-            else:
-                st.session_state.current_model = provider_info['models'][0]
+            models = fetch_models_for_provider(provider_id)
+            st.session_state.provider_models[provider_id] = models
+            if models:
+                st.session_state.current_model = models[0]
             st.rerun()
     
     st.markdown("---")
     
     # Model selection
-    current_provider_info = PROVIDERS[st.session_state.current_provider]
+    current_provider = st.session_state.current_provider
+    col1, col2 = st.columns([4, 1])
+    with col1:
+        st.markdown("### 🎯 Model")
+    with col2:
+        if st.button("🔄", key="refresh", help="Refresh models"):
+            models = fetch_models_for_provider(current_provider)
+            st.session_state.provider_models[current_provider] = models
+            st.rerun()
     
-    if st.session_state.current_provider == "ollama":
-        col1, col2 = st.columns([4, 1])
-        with col1:
-            st.markdown("### Model")
-        with col2:
-            if st.button("🔄", key="refresh_models", help="Refresh"):
-                fetch_ollama_models()
-                st.rerun()
-        
-        available_models = st.session_state.ollama_models
-        
-        if not available_models:
-            available_models = fetch_ollama_models()
-        
-        if available_models:
-            if st.session_state.ollama_connected:
-                st.markdown(f'<div class="success-message">✓ {len(available_models)} models</div>', 
-                          unsafe_allow_html=True)
-            
-            st.session_state.current_model = st.selectbox(
-                "Select model",
-                available_models,
-                index=0 if st.session_state.current_model not in available_models 
-                      else available_models.index(st.session_state.current_model),
-                label_visibility="collapsed"
-            )
-        else:
-            st.error("⚠️ No models found")
-            st.info("Install: `ollama pull llama2`")
-    else:
-        st.markdown("### Model")
+    if current_provider not in st.session_state.provider_models:
+        st.session_state.provider_models[current_provider] = fetch_models_for_provider(current_provider)
+    
+    models = st.session_state.provider_models.get(current_provider, [])
+    
+    if models:
+        st.markdown(f'<div class="success-message">✓ {len(models)} models available</div>', 
+                   unsafe_allow_html=True)
         st.session_state.current_model = st.selectbox(
             "Select model",
-            current_provider_info['models'],
-            index=0 if st.session_state.current_model not in current_provider_info['models'] 
-                  else current_provider_info['models'].index(st.session_state.current_model),
+            models,
+            index=0 if st.session_state.current_model not in models else models.index(st.session_state.current_model),
             label_visibility="collapsed"
         )
+    else:
+        st.error("⚠️ No models found")
     
     st.markdown("---")
     
     # API Configuration
-    st.markdown("### API Configuration")
+    st.markdown("### 🔑 Configuration")
     
-    if st.session_state.current_provider == "ollama":
-        new_host = st.text_input(
-            "Ollama Host",
-            value=st.session_state.ollama_host,
-            placeholder="http://localhost:11434"
-        )
+    if current_provider == "ollama":
+        new_host = st.text_input("Ollama Host", value=st.session_state.ollama_host)
         if new_host != st.session_state.ollama_host:
             st.session_state.ollama_host = new_host
-            fetch_ollama_models()
+            st.rerun()
+    elif current_provider == "lmstudio":
+        new_host = st.text_input("LM Studio Host", value=st.session_state.lmstudio_host)
+        if new_host != st.session_state.lmstudio_host:
+            st.session_state.lmstudio_host = new_host
             st.rerun()
     
-    if current_provider_info['requires_api_key']:
+    if PROVIDERS[current_provider]['requires_api_key']:
         api_key = st.text_input(
-            f"{current_provider_info['name']} API Key",
-            value=st.session_state.api_keys.get(st.session_state.current_provider, ""),
-            type="password",
-            placeholder="Enter your API key..."
+            f"{PROVIDERS[current_provider]['name']} API Key",
+            value=st.session_state.api_keys.get(current_provider, ""),
+            type="password"
         )
         if api_key:
-            st.session_state.api_keys[st.session_state.current_provider] = api_key
+            st.session_state.api_keys[current_provider] = api_key
     
     st.markdown("---")
     
     # File Upload
-    st.markdown("### 📁 Upload Files")
-    uploaded_file = st.file_uploader(
-        "Upload document",
-        type=['txt', 'pdf', 'md', 'json'],
-        label_visibility="collapsed"
-    )
-    
+    st.markdown("### 📁 Files")
+    uploaded_file = st.file_uploader("Upload", type=['txt', 'pdf', 'md', 'json'], label_visibility="collapsed")
     if uploaded_file:
-        file_content = uploaded_file.read().decode('utf-8', errors='ignore')
-        st.session_state.uploaded_files.append({
-            "name": uploaded_file.name,
-            "content": file_content[:5000]  # Limit content
-        })
-        st.success(f"✓ Loaded {uploaded_file.name}")
+        content = uploaded_file.read().decode('utf-8', errors='ignore')
+        st.session_state.uploaded_files.append({"name": uploaded_file.name, "content": content[:5000]})
+        st.success(f"✓ {uploaded_file.name}")
     
     st.markdown("---")
     
-    # Chat management
     if st.button("🗨️ New Chat", use_container_width=True):
-        if len(st.session_state.messages) > 0 and st.session_state.current_conversation_id:
-            pass  # Already saved
         st.session_state.messages = []
         st.session_state.current_conversation_id = None
         st.session_state.uploaded_files = []
         st.rerun()
     
-    # Export options
     if st.session_state.messages:
-        st.markdown("### 💾 Export Chat")
+        st.markdown("### 💾 Export")
         col1, col2 = st.columns(2)
-        
         with col1:
-            json_data = export_chat_as_json(st.session_state.messages)
-            st.download_button(
-                "📄 JSON",
-                data=json_data,
-                file_name=f"chat_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-                mime="application/json",
-                use_container_width=True
-            )
-        
+            st.download_button("📄 JSON", export_chat_as_json(st.session_state.messages),
+                             f"chat_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                             "application/json", use_container_width=True)
         with col2:
-            md_data = export_chat_as_markdown(st.session_state.messages)
-            st.download_button(
-                "📝 MD",
-                data=md_data,
-                file_name=f"chat_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md",
-                mime="text/markdown",
-                use_container_width=True
-            )
+            st.download_button("📝 MD", export_chat_as_markdown(st.session_state.messages),
+                             f"chat_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md",
+                             "text/markdown", use_container_width=True)
     
     st.markdown("---")
     
     # Statistics
-    st.markdown("### 📊 Usage Stats")
+    st.markdown("### 📊 Usage")
     stats, total = get_usage_statistics()
-    
     if total and total[0]:
-        st.metric("Total Tokens", f"{total[0] + total[1]:,}")
-        st.metric("Estimated Cost", f"${total[2]:.4f}")
-        
-        with st.expander("📈 Details"):
-            for stat in stats:
-                provider, model, inp, out, cost = stat
-                st.text(f"{provider}/{model}")
-                st.text(f"  In: {inp:,} | Out: {out:,}")
-                st.text(f"  Cost: ${cost:.4f}")
+        st.metric("Tokens", f"{total[0] + total[1]:,}")
+        st.metric("Cost", f"${total[2]:.4f}")
     else:
-        st.info("No usage data yet")
+        st.info("No data yet")
     
     st.markdown("---")
     
-    # Conversation history
-    st.markdown("### 💬 Chat History")
+    # History
+    st.markdown("### 💬 History")
     conversations = load_conversations_from_db()
-    
     if conversations:
         for conv in conversations[:10]:
             conv_id, title, provider, model, created = conv
             col1, col2 = st.columns([5, 1])
-            
             with col1:
-                if st.button(
-                    f"💬 {title[:25]}...",
-                    key=f"conv_{conv_id}",
-                    use_container_width=True
-                ):
+                if st.button(f"💬 {title[:25]}...", key=f"conv_{conv_id}", use_container_width=True):
                     st.session_state.messages = load_messages_from_db(conv_id)
                     st.session_state.current_conversation_id = conv_id
                     st.rerun()
-            
             with col2:
                 if st.button("🗑️", key=f"del_{conv_id}"):
                     delete_conversation_from_db(conv_id)
                     st.rerun()
     else:
-        st.info("No saved chats yet")
+        st.info("No history")
 
-# Main content area
+# Main content
 st.markdown('<div class="chat-container">', unsafe_allow_html=True)
 
-# Welcome screen
 if not st.session_state.messages:
     st.markdown("""
     <div class="welcome-message">
         <h1>How can I help you today?</h1>
-        <p>Choose a provider and model from the sidebar to get started</p>
+        <p>Choose a provider and model to get started</p>
     </div>
     """, unsafe_allow_html=True)
     
-    st.markdown('<div class="capability-grid">', unsafe_allow_html=True)
+    st.markdown('<div class="capability-grid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-top: 2rem;">', unsafe_allow_html=True)
+    
     capabilities = [
-        {"icon": "💬", "title": "Natural Conversation", "desc": "Chat naturally about any topic"},
-        {"icon": "💻", "title": "Code Assistant", "desc": "Write and debug code"},
-        {"icon": "📝", "title": "Writing Help", "desc": "Create and edit content"},
-        {"icon": "🧠", "title": "Analysis", "desc": "Analyze data and solve problems"}
+        {"icon": "💬", "title": "Chat", "desc": "Natural conversations"},
+        {"icon": "💻", "title": "Code", "desc": "Programming help"},
+        {"icon": "📝", "title": "Write", "desc": "Content creation"},
+        {"icon": "🧠", "title": "Analyze", "desc": "Problem solving"}
     ]
     
-    cols = st.columns(len(capabilities))
+    cols = st.columns(4)
     for col, cap in zip(cols, capabilities):
         with col:
             st.markdown(f"""
@@ -927,12 +763,11 @@ if not st.session_state.messages:
             """, unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
-# Display uploaded files context
 if st.session_state.uploaded_files:
-    st.info(f"📎 {len(st.session_state.uploaded_files)} file(s) attached to context")
+    st.info(f"📎 {len(st.session_state.uploaded_files)} file(s) attached")
 
-# Display chat messages
-for idx, message in enumerate(st.session_state.messages):
+# Display messages
+for message in st.session_state.messages:
     role = message["role"]
     content = message["content"]
     
@@ -940,23 +775,17 @@ for idx, message in enumerate(st.session_state.messages):
         st.markdown(f"""
         <div class="message-wrapper">
             <div class="user-message">
-                <div class="message-label">
-                    <span>👤</span>
-                    <span>You</span>
-                </div>
+                <div class="message-label"><span>👤</span><span>You</span></div>
                 <div class="message-content">{content}</div>
             </div>
         </div>
         """, unsafe_allow_html=True)
     else:
-        provider_icon = PROVIDERS[st.session_state.current_provider]['icon']
+        icon = PROVIDERS[st.session_state.current_provider]['icon']
         st.markdown(f"""
         <div class="message-wrapper">
             <div class="assistant-message">
-                <div class="message-label">
-                    <span>{provider_icon}</span>
-                    <span>Assistant</span>
-                </div>
+                <div class="message-label"><span>{icon}</span><span>Assistant</span></div>
                 <div class="message-content">{content}</div>
             </div>
         </div>
@@ -965,35 +794,28 @@ for idx, message in enumerate(st.session_state.messages):
 st.markdown('</div>', unsafe_allow_html=True)
 
 # Chat input
-prompt = st.chat_input("Type your message here...", key="chat_input")
+prompt = st.chat_input("Type your message...")
 
 if prompt:
     if not st.session_state.current_model:
-        st.error("Please select a model from the sidebar first!")
+        st.error("Please select a model first!")
     else:
-        # Create new conversation if needed
         if not st.session_state.current_conversation_id:
             title = prompt[:50]
             st.session_state.current_conversation_id = save_conversation_to_db(
-                title,
-                st.session_state.current_provider,
-                st.session_state.current_model
-            )
+                title, st.session_state.current_provider, st.session_state.current_model)
         
-        # Add file context if available
         context = ""
         if st.session_state.uploaded_files:
-            context = "\n\n[Context from uploaded files]:\n"
+            context = "\n\n[Context from files]:\n"
             for file in st.session_state.uploaded_files:
                 context += f"\n--- {file['name']} ---\n{file['content']}\n"
         
         full_prompt = context + prompt if context else prompt
         
-        # Add user message
         st.session_state.messages.append({"role": "user", "content": prompt})
         save_message_to_db(st.session_state.current_conversation_id, "user", prompt)
         
-        # Get AI response
         with st.spinner("Thinking..."):
             response, input_tokens, output_tokens = get_ai_response(
                 st.session_state.current_provider,
@@ -1002,19 +824,16 @@ if prompt:
                 st.session_state.messages[:-1] + [{"role": "user", "content": full_prompt}]
             )
         
-        # Add assistant response
         st.session_state.messages.append({"role": "assistant", "content": response})
         save_message_to_db(st.session_state.current_conversation_id, "assistant", response)
         
-        # Save usage statistics
-        cost = calculate_cost(st.session_state.current_provider, input_tokens, output_tokens)
-        save_usage_stats(
-            st.session_state.current_conversation_id,
-            st.session_state.current_provider,
-            st.session_state.current_model,
-            input_tokens,
-            output_tokens,
-            cost
-        )
+        cost = (input_tokens / 1000) * 0.001 + (output_tokens / 1000) * 0.002
+        save_usage_stats(st.session_state.current_conversation_id,
+                        st.session_state.current_provider,
+                        st.session_state.current_model,
+                        input_tokens, output_tokens, cost)
         
         st.rerun()
+        
+        st.rerun()
+
