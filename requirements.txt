@@ -1,3 +1,247 @@
-streamlit==1.28.0
-requests==2.31.0
-python-dotenv==1.0.0
+# AI Chat Assistant - Setup Guide
+
+## Overview
+
+Two versions of the AI Chat Assistant are provided:
+
+1. **Streamlit Web App** - Browser-based interface with enhanced dark mode
+2. **PyQt6 Desktop App** - Standalone desktop application (no browser needed)
+
+Both versions support:
+- ✅ **Dynamic model fetching** for all providers (no hardcoded models)
+- ✅ **LM Studio** integration with auto-detection of downloaded models
+- ✅ **Ollama**, **Groq**, **OpenAI**, **Anthropic** support
+- ✅ **Beautiful dark mode** with modern UI
+- ✅ **Chat history** and conversation management
+- ✅ **File uploads** for context
+- ✅ **Usage statistics** tracking
+
+---
+
+## Installation
+
+### 1. Install Python Dependencies
+
+**For Streamlit Version:**
+```bash
+pip install streamlit requests
+```
+
+**For Desktop Version:**
+```bash
+pip install PyQt6 requests
+```
+
+**For Both:**
+```bash
+pip install streamlit requests PyQt6
+```
+
+---
+
+## Usage
+
+### Streamlit Web App
+
+**Run the application:**
+```bash
+streamlit run enhanced_chat_streamlit.py
+```
+
+The app will open in your default browser at `http://localhost:8501`
+
+**Features:**
+- Modern dark theme with gradients and animations
+- Dynamic model loading for all providers
+- Refresh button to reload models
+- Responsive design
+- Export chats as JSON/Markdown
+
+---
+
+### PyQt6 Desktop App
+
+**Run the application:**
+```bash
+python desktop_chat_app.py
+```
+
+A standalone window will open directly (no browser needed).
+
+**Features:**
+- Native desktop application
+- Same beautiful dark theme
+- Split-pane interface (sidebar + chat)
+- Fully self-contained
+- Works offline (with local models)
+
+---
+
+## Provider Configuration
+
+### 1. Ollama (Local)
+- **Install**: Follow instructions at [ollama.ai](https://ollama.ai)
+- **Default URL**: `http://localhost:11434`
+- **Pull models**: `ollama pull llama2` or `ollama pull mistral`
+- Models are fetched automatically
+
+### 2. LM Studio (Local)
+- **Install**: Download from [lmstudio.ai](https://lmstudio.ai)
+- **Start server**: In LM Studio, go to "Local Server" tab and click "Start Server"
+- **Default URL**: `http://localhost:1234`
+- Any models you download in LM Studio will appear automatically
+- **No hardcoding needed** - models are fetched via API
+
+### 3. Groq
+- **Get API Key**: Sign up at [console.groq.com](https://console.groq.com)
+- Paste API key in the sidebar
+- Click refresh to load available models dynamically
+- Models update automatically based on what's available
+
+### 4. OpenAI
+- **Get API Key**: From [platform.openai.com](https://platform.openai.com)
+- Paste API key in the sidebar
+- Models are fetched dynamically (all GPT models)
+
+### 5. Anthropic
+- **Get API Key**: From [console.anthropic.com](https://console.anthropic.com)
+- Paste API key in the sidebar
+- Latest Claude models are automatically available
+
+---
+
+## Key Improvements
+
+### ✅ Fixed Issues
+
+1. **Dynamic Model Loading**
+   - All providers now fetch models from their APIs
+   - No hardcoded model lists
+   - Refresh button to reload models
+   - Models update based on API availability
+
+2. **LM Studio Support**
+   - Fully integrated with OpenAI-compatible API
+   - Auto-detects downloaded models
+   - Works exactly like Ollama (local, no API key needed)
+
+3. **Enhanced Dark Mode**
+   - Modern gradient backgrounds
+   - Better contrast and readability
+   - Smooth animations
+   - Consistent styling across all elements
+   - Professional UI/UX
+
+4. **Standalone Desktop App**
+   - No browser required
+   - Native window application
+   - Same features as web version
+   - Faster startup
+   - Better performance
+
+---
+
+## Advanced Settings
+
+Both versions support:
+
+- **Temperature**: Control randomness (0.0 - 2.0)
+- **Max Tokens**: Set response length (256 - 4096)
+- **File Uploads**: Add context from documents
+- **Chat History**: Save and load conversations
+- **Export**: Download chats as JSON or Markdown
+
+---
+
+## Troubleshooting
+
+### Models not appearing?
+
+**Ollama:**
+```bash
+# Check if Ollama is running
+curl http://localhost:11434/api/tags
+
+# Pull a model
+ollama pull llama2
+```
+
+**LM Studio:**
+1. Open LM Studio
+2. Download a model from the "Discover" tab
+3. Start the local server
+4. Click refresh in the app
+
+**Groq/OpenAI/Anthropic:**
+1. Verify API key is correct
+2. Check internet connection
+3. Click refresh button
+4. Check console for error messages
+
+### Desktop app won't start?
+
+```bash
+# Make sure PyQt6 is installed
+pip install --upgrade PyQt6
+
+# Run with error output
+python desktop_chat_app.py
+```
+
+### Connection errors?
+
+- Check if local servers (Ollama/LM Studio) are running
+- Verify host URLs are correct (with `http://`)
+- For API providers, check API key validity
+- Check firewall settings
+
+---
+
+## Database
+
+Both apps use SQLite database `chat_history.db` to store:
+- Conversations
+- Messages
+- Usage statistics
+
+The database is created automatically on first run.
+
+**Location**: Same directory as the Python script
+
+---
+
+## Tips
+
+1. **Use Local Models** (Ollama/LM Studio) for privacy and no API costs
+2. **Refresh Models** after downloading new ones
+3. **Save Important Chats** using the export feature
+4. **Adjust Temperature** based on task:
+   - Lower (0.3-0.5): Factual, consistent responses
+   - Medium (0.7-0.9): Balanced creativity
+   - Higher (1.0-1.5): More creative, varied responses
+
+---
+
+## System Requirements
+
+- Python 3.8 or higher
+- 4GB RAM minimum (8GB+ recommended for local models)
+- Internet connection (for API providers)
+- 5GB+ free disk space (for local models)
+
+---
+
+## License
+
+Free to use and modify for personal and commercial projects.
+
+---
+
+## Support
+
+For issues or questions:
+1. Check Troubleshooting section above
+2. Verify provider documentation
+3. Check console/terminal for error messages
+
+Enjoy your AI Chat Assistant! 🚀
